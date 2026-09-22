@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Simulador de equilibrio líquido–vapor V2</title>
+<style>
+  :root{
+    --bg:#f6f7f9;
+    --panel:#ffffff;
+    --text:#17191c;
+    --muted:#626a73;
+    --border:#d7dce2;
+    --accent:#1f6feb;
+    --liquid:#7db7ff;
+    --gas:#222;
+    --danger:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  .app{
+    max-width:1200px;
+    margin:0 auto;
+    padding:24px;
+  }
+  h1{font-size:28px;margin:0 0 6px}
+  .subtitle{color:var(--muted);margin-bottom:20px}
+  .grid{
+    display:grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap:18px;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:18px;
+    box-shadow:0 4px 18px rgba(0,0,0,.04);
+  }
+  .panel h2{
+    margin:0 0 14px;
+    font-size:18px;
+  }
+  .vessel-wrap{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:430px;
+  }
+  canvas{display:block}
+  #vessel{
+    width:100%;
+    max-width:420px;
+    height:auto;
+  }
+  #graph{
+    width:100%;
+    height:360px;
+    border-radius:10px;
+  }
+  .metrics{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+    margin-top:12px;
+  }
+  .metric{
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:10px 12px;
+  }
+  .metric .k{font-size:12px;color:var(--muted)}
+  .metric .v{font-size:20px;font-weight:650;margin-top:2px}
+  .controls{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:14px;
+    margin-top:18px;
+  }
+  .control-group{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:14px;
+  }
+  label{display:block;font-size:13px;font-weight:650;margin-bottom:8px}
+  input[type=range]{width:100%}
+  .row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  button{
+    border:1px solid var(--border);
+    background:#fff;
+    border-radius:9px;
+    padding:9px 12px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button:hover{filter:brightness(.98)}
+  .small{font-size:12px;color:var(--muted);line-height:1.45}
+  .status{
+    margin-top:12px;
+    padding:10px 12px;
+    border-radius:10px;
+    background:#f1f5fb;
+    font-weight:650;
+  }
+  @media (max-width:850px){
+    .grid{grid-template-columns:1fr}
+    .controls{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Equilibrio líquido–vapor</h1>
+  <div class="subtitle">Acetona en un recipiente cerrado de volumen fijo · V3</div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Recipiente</h2>
+      <div class="vessel-wrap">
+        <canvas id="vessel" width="420" height="430"></canvas>
+      </div>
+      <div class="status" id="phaseStatus">Sistema vacío</div>
+      <div class="metrics">
+        <div class="metric"><div class="k">Presión del gas</div><div class="v" id="pressure">0.00 kPa</div></div>
+        <div class="metric"><div class="k">Presión de vapor</div><div class="v" id="pvap">0.00 kPa</div></div>
+        <div class="metric"><div class="k">Moles en gas</div><div class="v" id="ngas">0.000 mol</div></div>
+        <div class="metric"><div class="k">Moles en líquido</div><div class="v" id="nliq">0.000 mol</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Presión en función del tiempo</h2>
+      <canvas id="graph" width="650" height="360"></canvas>
+      <p class="small">
+        Línea continua: presión real del gas. Línea discontinua: presión de vapor de la acetona a la temperatura actual.
+        La aproximación al equilibrio está ralentizada deliberadamente para que pueda verse la evaporación o condensación. El gráfico conserva todo el experimento desde t = 0.
+      </p>
+    </section>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Temperatura: <span id="tempLabel">25.0 °C</span></label>
+      <input id="temp" type="range" min="0" max="55" step="0.5" value="25">
+      <div class="small">La presión de vapor se calcula con Clausius–Clapeyron usando ΔH<sub>vap</sub> = 29.1 kJ/mol y el punto de ebullición normal de la acetona.</div>
+    </div>
+
+    <div class="control-group">
+      <label>Agregar sustancia</label>
+      <div class="row">
+        <button class="primary" id="addGas">+ 0.010 mol gas</button>
+        <button id="addLiquid">+ 0.010 mol líquido</button>
+      </div>
+      <div class="small" style="margin-top:8px">Agregar gas aumenta primero la fase gaseosa. Agregar líquido aumenta primero la fase líquida. Luego el sistema evoluciona hacia el equilibrio.</div>
+    </div>
+
+    <div class="control-group">
+      <label>Simulación</label>
+      <div class="row">
+        <button id="pause">Pausa</button>
+        <button id="reset">Reiniciar</button>
+      </div>
+      <div class="small" style="margin-top:8px">Volumen del recipiente: 2.00 L. Modelo ideal simplificado; el volumen ocupado por el líquido se desprecia en esta versión.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const R = 8.314462618;          // kPa·L·mol^-1·K^-1
+const V = 2.00;                 // L
+const dHvap = 29.1e3;           // J/mol, acetona
+const Tb = 56.05 + 273.15;      // K
+const Pb = 101.325;             // kPa at normal boiling point
+
+let T = 25 + 273.15;
+let nGas = 0;
+let nLiq = 0;
+let running = true;
+let simTime = 0;
+let history = [];
+let historyAccumulator = 0;
+
+// Smooth visual particle system.
+// Particle motion is illustrative rather than a molecular-dynamics calculation.
+let particles = [];
+
+let lastStamp = performance.now();
+let lastFrameDt = 0;
+
+const vessel = document.getElementById("vessel");
+const vctx = vessel.getContext("2d");
+const graph = document.getElementById("graph");
+const gctx = graph.getContext("2d");
+
+function vaporPressure(TK){
+  return Pb * Math.exp((-dHvap/R) * (1/TK - 1/Tb));
+}
+
+function pressure(){
+  return nGas * R * T / V;
+}
+
+function totalMoles(){
+  return nGas + nLiq;
+}
+
+function equilibriumGasMoles(){
+  const pSat = vaporPressure(T);
+  const nSat = pSat * V / (R * T);
+  return Math.min(totalMoles(), nSat);
+}
+
+function approachEquilibrium(dt){
+  if(totalMoles() <= 0) return;
+
+  const targetGas = equilibriumGasMoles();
+
+  // Relaxation rate chosen for visual teaching rather than real kinetics.
+  const tau = 2.5; // s
+  const frac = 1 - Math.exp(-dt/tau);
+
+  const delta = (targetGas - nGas) * frac;
+  nGas += delta;
+  nLiq -= delta;
+
+  if(nGas < 1e-10) nGas = 0;
+  if(nLiq < 1e-10) nLiq = 0;
+}
+
+function phaseText(){
+  const nt = totalMoles();
+  if(nt < 1e-8) return "Sistema vacío";
+
+  const p = pressure();
+  const ps = vaporPressure(T);
+
+  if(nLiq > 0.0001 && Math.abs(p-ps)/ps < 0.03){
+    return "Dos fases: líquido + vapor en equilibrio";
+  }
+  if(nLiq > 0.0001 && p < ps){
+    return "Evaporación: el sistema se aproxima al equilibrio";
+  }
+  if(nLiq > 0.0001 && p > ps){
+    return "Condensación: el sistema se aproxima al equilibrio";
+  }
+  if(nLiq <= 0.0001 && p < ps){
+    return "Una fase: gas no saturado";
+  }
+  if(nLiq <= 0.0001 && p >= ps){
+    return "Gas sobresaturado: comenzará a condensar";
+  }
+  return "Sistema en evolución";
+}
+
+function updateReadouts(){
+  document.getElementById("pressure").textContent = pressure().toFixed(2) + " kPa";
+  document.getElementById("pvap").textContent = vaporPressure(T).toFixed(2) + " kPa";
+  document.getElementById("ngas").textContent = nGas.toFixed(3) + " mol";
+  document.getElementById("nliq").textContent = nLiq.toFixed(3) + " mol";
+  document.getElementById("phaseStatus").textContent = phaseText();
+}
+
+function drawVessel(){
+  const w = vessel.width, h = vessel.height;
+  vctx.clearRect(0,0,w,h);
+
+  const x=70, y=35, vw=280, vh=340;
+
+  // vessel
+  vctx.lineWidth=4;
+  vctx.strokeStyle="#222";
+  vctx.beginPath();
+  vctx.roundRect(x,y,vw,vh,18);
+  vctx.stroke();
+
+  // liquid level: semi-quantitative visual scaling
+  const liqVisualMax = 0.12; // mol gives nearly full lower region
+  const liqFrac = Math.min(nLiq/liqVisualMax, 0.72);
+  const liqH = vh * liqFrac;
+
+  if(liqH > 1){
+    vctx.fillStyle="#7db7ff";
+    vctx.beginPath();
+    vctx.roundRect(x+3, y+vh-liqH-3, vw-6, liqH, [0,0,14,14]);
+    vctx.fill();
+
+    // liquid surface
+    vctx.strokeStyle="#3d86d8";
+    vctx.lineWidth=2;
+    vctx.beginPath();
+    vctx.moveTo(x+6, y+vh-liqH-3);
+    vctx.lineTo(x+vw-6, y+vh-liqH-3);
+    vctx.stroke();
+  }
+
+  // Smooth gas-particle animation.
+  const gasVisualMax = 0.08;
+  const count = nGas > 1e-7
+    ? Math.min(90, Math.max(1, Math.round(8 + 82*Math.min(nGas/gasVisualMax,1))))
+    : 0;
+
+  const gasTop = y+10;
+  const gasBottom = y+vh-liqH-12;
+
+  // Keep the visual particle count synchronized with the amount of gas.
+  while(particles.length < count){
+    const angle = Math.random()*Math.PI*2;
+    particles.push({
+      x: Math.random(),
+      y: Math.random(),
+      vx: Math.cos(angle),
+      vy: Math.sin(angle),
+      r: 2.2 + (particles.length % 3)*0.35
+    });
+  }
+  while(particles.length > count) particles.pop();
+
+  if(count > 0 && gasBottom > gasTop+10){
+    vctx.fillStyle="#222";
+
+    // Deliberately exaggerated temperature dependence for teaching:
+    // colder = visibly slower, hotter = visibly faster.
+    const tempC = T - 273.15;
+    const tempVisualFactor = Math.max(0.45, Math.min(1.70, 0.55 + tempC/45));
+    const baseSpeed = 0.055; // normalized vessel-widths per second
+    const speed = baseSpeed * tempVisualFactor;
+
+    for(const p of particles){
+      p.x += p.vx * speed * lastFrameDt;
+      p.y += p.vy * speed * lastFrameDt;
+
+      // Bounce from the vessel boundaries.
+      if(p.x < 0){ p.x = -p.x; p.vx *= -1; }
+      if(p.x > 1){ p.x = 2-p.x; p.vx *= -1; }
+      if(p.y < 0){ p.y = -p.y; p.vy *= -1; }
+      if(p.y > 1){ p.y = 2-p.y; p.vy *= -1; }
+
+      const px = x+14 + p.x*(vw-28);
+      const py = gasTop + p.y*(gasBottom-gasTop);
+
+      vctx.beginPath();
+      vctx.arc(px,py,p.r,0,Math.PI*2);
+      vctx.fill();
+    }
+  }
+
+  // labels
+  vctx.fillStyle="#17191c";
+  vctx.font="600 16px system-ui";
+  vctx.textAlign="center";
+  if(nLiq > 0.0001){
+    vctx.fillText("LÍQUIDO", x+vw/2, y+vh-Math.max(18, liqH/2));
+  }
+  vctx.font="14px system-ui";
+  vctx.fillStyle="#626a73";
+  vctx.fillText("V = 2.00 L", x+vw/2, h-22);
+}
+
+function drawGraph(){
+  const w=graph.width, h=graph.height;
+  gctx.clearRect(0,0,w,h);
+
+  const ml=60,mr=20,mt=20,mb=45;
+  const pw=w-ml-mr, ph=h-mt-mb;
+
+  // Always show the complete experiment from t = 0.
+  // The x-axis expands automatically as simulation time increases.
+  const visible = history;
+
+  let ymax = 10;
+  for(const d of visible) ymax = Math.max(ymax, d.p, d.ps);
+  ymax *= 1.15;
+
+  // axes
+  gctx.strokeStyle="#222";
+  gctx.lineWidth=1.5;
+  gctx.beginPath();
+  gctx.moveTo(ml,mt);
+  gctx.lineTo(ml,mt+ph);
+  gctx.lineTo(ml+pw,mt+ph);
+  gctx.stroke();
+
+  // y ticks
+  gctx.font="12px system-ui";
+  gctx.fillStyle="#626a73";
+  gctx.textAlign="right";
+  for(let i=0;i<=5;i++){
+    const val=ymax*i/5;
+    const yy=mt+ph-(val/ymax)*ph;
+    gctx.fillText(val.toFixed(0),ml-8,yy+4);
+    gctx.strokeStyle="#e4e7eb";
+    gctx.lineWidth=1;
+    gctx.beginPath();
+    gctx.moveTo(ml,yy);
+    gctx.lineTo(ml+pw,yy);
+    gctx.stroke();
+  }
+
+  const t0 = 0;
+
+  // Start with a 15 s window so the graph is readable at the beginning.
+  // After that, continuously expand the x-axis to keep the full history visible.
+  let t1;
+  if(simTime <= 15){
+    t1 = 15;
+  } else {
+    // Add a small margin on the right so the newest point is not touching the axis.
+    t1 = simTime * 1.05;
+  }
+
+  function X(t){ return ml + ((t-t0)/(t1-t0))*pw; }
+  function Y(p){ return mt+ph-(p/ymax)*ph; }
+
+  // vapor-pressure curve
+  if(visible.length>1){
+    gctx.save();
+    gctx.setLineDash([7,6]);
+    gctx.strokeStyle="#c0392b";
+    gctx.lineWidth=2;
+    gctx.beginPath();
+    visible.forEach((d,i)=>{
+      const xx=X(d.t), yy=Y(d.ps);
+      if(i===0) gctx.moveTo(xx,yy); else gctx.lineTo(xx,yy);
+    });
+    gctx.stroke();
+    gctx.restore();
+
+    // actual pressure
+    gctx.strokeStyle="#1f6feb";
+    gctx.lineWidth=3;
+    gctx.beginPath();
+    visible.forEach((d,i)=>{
+      const xx=X(d.t), yy=Y(d.p);
+      if(i===0) gctx.moveTo(xx,yy); else gctx.lineTo(xx,yy);
+    });
+    gctx.stroke();
+  }
+
+  // x ticks
+  gctx.font="12px system-ui";
+  gctx.fillStyle="#626a73";
+  gctx.textAlign="center";
+  const xTickCount = 5;
+  for(let i=0;i<=xTickCount;i++){
+    const val=t0+(t1-t0)*i/xTickCount;
+    const xx=ml+(i/xTickCount)*pw;
+    gctx.fillText(val.toFixed(val < 10 ? 1 : 0), xx, mt+ph+20);
+  }
+
+  // axis labels
+  gctx.fillStyle="#17191c";
+  gctx.font="600 13px system-ui";
+  gctx.textAlign="center";
+  gctx.fillText("tiempo (s)", ml+pw/2, h-10);
+
+  gctx.save();
+  gctx.translate(16,mt+ph/2);
+  gctx.rotate(-Math.PI/2);
+  gctx.fillText("presión (kPa)",0,0);
+  gctx.restore();
+
+  // legend
+  gctx.textAlign="left";
+  gctx.font="12px system-ui";
+  gctx.fillStyle="#1f6feb";
+  gctx.fillText("— P gas", ml+10, mt+14);
+  gctx.fillStyle="#c0392b";
+  gctx.fillText("– – P vapor", ml+90, mt+14);
+}
+
+function addHistory(){
+  // Store the entire experiment, but sample the graph at 10 points/s
+  // instead of storing every display frame.
+  history.push({t:simTime, p:pressure(), ps:vaporPressure(T)});
+}
+
+function animate(stamp){
+  const rawDt=(stamp-lastStamp)/1000;
+  const dt=Math.min(rawDt,0.05);
+  lastStamp=stamp;
+  lastFrameDt = running ? dt : 0;
+
+  if(running){
+    simTime += dt;
+    approachEquilibrium(dt);
+
+    // Graph sampling at 10 Hz prevents the history from growing at
+    // the monitor refresh rate while preserving the complete experiment.
+    historyAccumulator += dt;
+    if(historyAccumulator >= 0.10){
+      addHistory();
+      historyAccumulator = 0;
+    }
+  }
+
+  updateReadouts();
+  drawVessel();
+  drawGraph();
+
+  requestAnimationFrame(animate);
+}
+
+document.getElementById("temp").addEventListener("input", e=>{
+  const c=parseFloat(e.target.value);
+  T=c+273.15;
+  document.getElementById("tempLabel").textContent=c.toFixed(1)+" °C";
+});
+
+document.getElementById("addGas").addEventListener("click", ()=>{
+  nGas += 0.010;
+});
+
+document.getElementById("addLiquid").addEventListener("click", ()=>{
+  nLiq += 0.010;
+});
+
+document.getElementById("pause").addEventListener("click", e=>{
+  running=!running;
+  e.target.textContent = running ? "Pausa" : "Continuar";
+});
+
+document.getElementById("reset").addEventListener("click", ()=>{
+  T=25+273.15;
+  nGas=0;
+  nLiq=0;
+  simTime=0;
+  history=[];
+  historyAccumulator=0;
+  particles=[];
+  document.getElementById("temp").value=25;
+  document.getElementById("tempLabel").textContent="25.0 °C";
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
