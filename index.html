@@ -122,7 +122,7 @@
 <body>
 <div class="app">
   <h1>Equilibrio líquido–vapor</h1>
-  <div class="subtitle">Acetona en un recipiente cerrado de volumen fijo · V3</div>
+  <div class="subtitle">Acetona en un recipiente cerrado de volumen fijo · V4</div>
 
   <div class="grid">
     <section class="panel">
@@ -132,8 +132,8 @@
       </div>
       <div class="status" id="phaseStatus">Sistema vacío</div>
       <div class="metrics">
-        <div class="metric"><div class="k">Presión del gas</div><div class="v" id="pressure">0.00 kPa</div></div>
-        <div class="metric"><div class="k">Presión de vapor</div><div class="v" id="pvap">0.00 kPa</div></div>
+        <div class="metric"><div class="k">Presión de la fase gaseosa</div><div class="v" id="pressure">0.0 torr</div></div>
+        <div class="metric"><div class="k">Presión de vapor</div><div class="v" id="pvap">0.0 torr</div></div>
         <div class="metric"><div class="k">Moles en gas</div><div class="v" id="ngas">0.000 mol</div></div>
         <div class="metric"><div class="k">Moles en líquido</div><div class="v" id="nliq">0.000 mol</div></div>
       </div>
@@ -143,7 +143,7 @@
       <h2>Presión en función del tiempo</h2>
       <canvas id="graph" width="650" height="360"></canvas>
       <p class="small">
-        Línea continua: presión real del gas. Línea discontinua: presión de vapor de la acetona a la temperatura actual.
+        Línea continua: presión de la fase gaseosa. Línea discontinua: presión de vapor de la acetona a la temperatura actual.
         La aproximación al equilibrio está ralentizada deliberadamente para que pueda verse la evaporación o condensación. El gráfico conserva todo el experimento desde t = 0.
       </p>
     </section>
@@ -182,6 +182,7 @@ const V = 2.00;                 // L
 const dHvap = 29.1e3;           // J/mol, acetona
 const Tb = 56.05 + 273.15;      // K
 const Pb = 101.325;             // kPa at normal boiling point
+const KPA_TO_TORR = 7.50061683;   // 1 kPa = 7.50061683 torr
 
 let T = 25 + 273.15;
 let nGas = 0;
@@ -264,8 +265,8 @@ function phaseText(){
 }
 
 function updateReadouts(){
-  document.getElementById("pressure").textContent = pressure().toFixed(2) + " kPa";
-  document.getElementById("pvap").textContent = vaporPressure(T).toFixed(2) + " kPa";
+  document.getElementById("pressure").textContent = (pressure()*KPA_TO_TORR).toFixed(1) + " torr";
+  document.getElementById("pvap").textContent = (vaporPressure(T)*KPA_TO_TORR).toFixed(1) + " torr";
   document.getElementById("ngas").textContent = nGas.toFixed(3) + " mol";
   document.getElementById("nliq").textContent = nLiq.toFixed(3) + " mol";
   document.getElementById("phaseStatus").textContent = phaseText();
@@ -467,22 +468,22 @@ function drawGraph(){
   gctx.save();
   gctx.translate(16,mt+ph/2);
   gctx.rotate(-Math.PI/2);
-  gctx.fillText("presión (kPa)",0,0);
+  gctx.fillText("presión (torr)",0,0);
   gctx.restore();
 
   // legend
   gctx.textAlign="left";
   gctx.font="12px system-ui";
   gctx.fillStyle="#1f6feb";
-  gctx.fillText("— P gas", ml+10, mt+14);
+  gctx.fillText("— P fase gaseosa", ml+10, mt+14);
   gctx.fillStyle="#c0392b";
-  gctx.fillText("– – P vapor", ml+90, mt+14);
+  gctx.fillText("– – P vapor", ml+145, mt+14);
 }
 
 function addHistory(){
   // Store the entire experiment, but sample the graph at 10 points/s
   // instead of storing every display frame.
-  history.push({t:simTime, p:pressure(), ps:vaporPressure(T)});
+  history.push({t:simTime, p:pressure()*KPA_TO_TORR, ps:vaporPressure(T)*KPA_TO_TORR});
 }
 
 function animate(stamp){
